@@ -42,7 +42,7 @@ class ImageDataset(Dataset):
         return data
     
 class VideoDataset(Dataset): 
-    def __init__(self, root_path, num_frame=7):
+    def __init__(self, root_path, num_frame=7, num_scene=None):
         super().__init__()
         self.root_path = root_path
         self.input_shape = (512, 288)
@@ -89,15 +89,13 @@ class VideoDataset(Dataset):
 
                 # Add new datum to data list
                 if len(frame_list) == self.num_frame:
-                    datum = (np.array(frame_list), np.array(action_list))
+                    datum = tuple(map(lambda x: torch.from_numpy(np.array(x)).float(), (frame_list, action_list)))
+                    # datum = (np.array(frame_list), np.array(action_list))
                     data.append(datum) 
                     frame_list.pop(0)
                     action_list.pop(0)
                     total += 1
-                    print(f"\rReading data... [{total} / {(len(actions) - self.num_frame + 1) * len(scenes)}] ", end='')
-                    if total == 2:
-                        break
-            break
+                    print(f"\rReading data... [{total} / {(len(actions) - self.num_frame + 2) * len(scenes)}] ", end='')
         print("Completed! ")
         return data
 
@@ -114,9 +112,15 @@ class VideoDataset(Dataset):
     
     
 if __name__ == "__main__": 
-    dataset = VideoDataset("/root/share/minecraft")
+    dataset = VideoDataset("/root/share/minecraft/val", num_frame=6)
     # print(dataset[0][0])
     # print(dataset[1][0])
-    print(len(dataset[0][0]))
-    print(len(dataset[0][1]))
-    print(len(dataset[1][1]))
+    # print(len(dataset[0][0]))
+    # print(len(dataset[0][1]))
+    # print(len(dataset[1][1]))
+
+    from torch.utils.data import DataLoader
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, drop_last=True, pin_memory=True, num_workers=1)
+    print(len(dataloader))
+    # for data in dataloader: 
+    #     print(data)

@@ -93,13 +93,6 @@ class VectorQuantizerEMA(nn.Module):
         self._epsilon = epsilon
  
     def forward(self, inputs):
-        # # convert inputs from BCHW -> BHWC
-        # inputs = inputs.permute(0, 2, 3, 1).contiguous()
-        # input_shape = inputs.shape
- 
-        # # Flatten input
-        # flat_input = inputs.view(-1, self._embedding_dim)
-
         flat_input = inputs
         
         # Calculate distances
@@ -112,8 +105,7 @@ class VectorQuantizerEMA(nn.Module):
         encodings = torch.zeros(encoding_indices.shape[0], self.vocab_size, device=inputs.device)
         encodings.scatter_(1, encoding_indices, 1)
  
-        # Quantize and unflatten
-        # quantized = torch.matmul(encodings, self._embedding.weight).view(input_shape)
+        # Quantize
         quantized = torch.matmul(encodings, self._embedding.weight)
  
         # Use EMA to update the embedding vectors
@@ -140,10 +132,8 @@ class VectorQuantizerEMA(nn.Module):
         quantized = inputs + (quantized - inputs).detach()
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
- 
-        # convert quantized from BHWC -> BCHW
-        # return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings
-        return loss, quantized, perplexity, encodings
+
+        return loss, quantized, perplexity, encoding_indices
     
 
 """Discriminator"""
@@ -213,10 +203,10 @@ class Image_Tokenizer(UNet):
         z = z.view(-1, self.embed_dim)
 
         # Tokenize
-        _, tokens, _, _ = self.vq(z)
+        _, tokens, _, indices = self.vq(z)
         tokens = tokens.view(batch_size, -1, self.embed_dim)
 
-        return tokens
+        return tokens, indices
 
     def quantize(self, cur):
         z = self.etoken(cur)
@@ -271,6 +261,6 @@ if __name__ == "__main__":
     # net = Discriminator(patch=False)
     net = Image_Tokenizer(embed_dim=4096)
 
-    inp = torch.rand(1, 3, 288, 512)
-    out = net.tokenize(inp)
+    inp = torch.rand(1, 3, 360, 640)
+    out = net.generate(inp)
     print(out.shape)

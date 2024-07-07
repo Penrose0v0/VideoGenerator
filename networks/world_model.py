@@ -1,6 +1,19 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
+
+from networks.image_tokenizer import Image_Tokenizer
+
+"""Action Encoder"""
+class Action_Encoder(nn.Module): 
+    def __init__(self, action_space_dim=25, embed_dim=4096): 
+        super().__init__()
+        self.fc = nn.Linear(action_space_dim, embed_dim)
+    
+    def forward(self, x): 
+        return self.fc(x)
+    
 
 def get_attn_pad_mask(seq_q, seq_k):  
     batch_size, len_q, _ = seq_q.size()
@@ -105,8 +118,9 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList([DecoderLayer(embed_dim, d_k, d_v, d_ff, num_heads) for _ in range(num_layers)])
         
     def forward(self, x): 
-        t_emb = self.t_pos_emb.repeat(1, 1, self.num_tokens).view(1, -1, self.embed_dim)
-        s_emb = self.s_pos_emb.repeat(1, self.num_frames, 1)
+        seq_len = x.shape[1]
+        t_emb = self.t_pos_emb.repeat(1, 1, self.num_tokens).view(1, -1, self.embed_dim)[:, :seq_len, :]
+        s_emb = self.s_pos_emb.repeat(1, self.num_frames, 1)[:, :seq_len, :]
         x = x + t_emb + s_emb
 
         # Masking
@@ -121,10 +135,10 @@ class Decoder(nn.Module):
         return x, attn_list
 
 
-"""World Model"""
-class World_Model(nn.Module): 
-    def __init__(self, vocab_size, embed_dim, num_layers, num_frames, num_tokens, 
-                 d_k, d_v, d_ff, num_heads): 
+"""Transformer"""
+class Transformer(nn.Module): 
+    def __init__(self, vocab_size, embed_dim, num_frames, num_tokens, num_layers=6, 
+                 d_k=64, d_v=64, d_ff=2048, num_heads=8): 
         super().__init__()
         self.decoder = Decoder(num_layers, embed_dim, num_frames, num_tokens, d_k, d_v, d_ff, num_heads)
         self.projection = nn.Linear(embed_dim, vocab_size, bias=False)
@@ -132,22 +146,111 @@ class World_Model(nn.Module):
     def forward(self, x): 
         y, _ = self.decoder(x)
         y = self.projection(y)
-        return nn.Softmax(dim=-1)(y)
+        # return nn.Softmax(dim=-1)(y)
+        return y
+    
+
+"""World Model"""
+class World_Model(nn.Module): 
+    def __init__(self, vocab_size, embed_dim, num_frames, num_image_tokens, num_action_tokens): 
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embed_dim = embed_dim
+        self.num_frames = num_frames
+        self.num_image_tokens = num_image_tokens
+        self.num_action_tokens = num_action_tokens
+
+        self.image_tokenizer = Image_Tokenizer(vocab_size=vocab_size, embed_dim=embed_dim)
+        self.image_encoder = self.image_tokenizer.tokenize
+        self.action_encoder = Action_Encoder(embed_dim=embed_dim)
+        self.transformer = Transformer(vocab_size=vocab_size, embed_dim=embed_dim, num_frames=num_frames, num_tokens=num_image_tokens+1)
+        
+        for param in self.image_tokenizer.parameters(): 
+            param.requires_grad = False
+    
+    def load_image_tokenizer(self, it_model_path): 
+        self.image_tokenizer.load_state_dict({k.replace('module.', ''): v for k, v in torch.load(it_model_path).items()})
+
+    def forward(self, frame_list, action_list):
+        """
+        frame_list: [batch_size, num_frames, c, h, w]
+        action_list: [batch_size, num_frames-1, action_size]
+        """ 
+        # Encode frames and actions
+        batch_size, _, c, h, w = frame_list.shape
+        frames = frame_list.view(-1, c, h, w)
+        encoded_frames, indices = self.image_encoder(frames)
+        encoded_frames = encoded_frames.view(
+            batch_size, self.num_frames, self.num_image_tokens, self.embed_dim)
+
+        action_size = action_list.shape[-1]
+        actions = action_list.view(-1, action_size)
+        encoded_actions = self.action_encoder(actions).view(
+            batch_size, self.num_frames - 1, self.num_action_tokens, self.embed_dim)
+        tmp_action_tokens = F.pad(encoded_actions, (0, 0, 0, 0, 0, 1))
+
+        input_tokens = torch.cat((encoded_frames, tmp_action_tokens), dim=2).view(batch_size, -1, self.embed_dim)
+
+        # Process output
+        output = self.transformer(input_tokens).view(batch_size, self.num_frames, -1, self.vocab_size)
+        output = output[:, :, :-self.num_action_tokens, :].reshape(-1, self.vocab_size)
+        target = indices.squeeze()
+        loss = F.cross_entropy(output, target)
+        return loss
+    
+    def predict(self, frame_list, action_list): 
+        """
+        frame_list: [1, len, c, h, w]
+        next_action: [1, len, action_size]  p.s. included the next action
+        This method only predict tokens for next one frame
+        """ 
+        max_len = self.num_frames * (self.num_image_tokens + self.num_action_tokens)
+
+        # Encode frames and actions
+        batch_size, cur_frame_num, c, h, w = frame_list.shape
+        frames = frame_list.view(-1, c, h, w)
+        encoded_frames, _ = self.image_encoder(frames)
+        encoded_frames = encoded_frames.view(
+            batch_size, cur_frame_num, self.num_image_tokens, self.embed_dim)
+
+        action_size = action_list.shape[-1]
+        actions = action_list.view(-1, action_size)
+        encoded_actions = self.action_encoder(actions).view(
+            batch_size, cur_frame_num, self.num_action_tokens, self.embed_dim)
+
+        input_tokens = torch.cat((encoded_frames, encoded_actions), dim=2).view(batch_size, -1, self.embed_dim)
+        cur_token_len = input_tokens.size(1)
+
+        # print(encoded_frames.shape, encoded_actions.shape)
+        print(input_tokens.shape)
+
+        for _ in range(self.num_image_tokens): 
+            _, output = self.world_model(input_tokens).max(dim=-1, keepdim=False)
+            next_token_indice = output[:, -1]
+            next_token = self.image_tokenizer.vq._embedding.weight[next_token_indice].unsqueeze(1)
+            input_tokens = torch.cat((input_tokens, next_token), dim=1)
+            print(input_tokens.shape)
+        generated_tokens = input_tokens[:, -self.num_image_tokens:, :]
+        # generated_tokens = torch.rand(1, 576, 2048).to(device)
+        # z = generated_tokens.view(batch_size, 18, 32, -1)
+        # z = z.permute(0, 3, 1, 2).contiguous()
+        return generated_tokens
+
 
 if __name__ == "__main__": 
     dembed = 2048
-    f = 12
-    t = 576
+    f = 12  # num of frame
+    t = 580  # tokens per frame  32 * 18 + action tokens 4
     device = 'cpu'
-    device = torch.device(
-        "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    # device = torch.device(
+    #     "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     # net = MultiHeadAttention(4096, 16, 16, 64)
-    net = World_Model(vocab_size=4096, embed_dim=dembed, num_layers=6, num_frames=f, num_tokens=t, 
+    net = Transformer(vocab_size=4096, embed_dim=dembed, num_layers=6, num_frames=f, num_tokens=t, 
                   d_k=64, d_v=64, d_ff=2048, num_heads=8).to(device)
     total_params = sum(p.numel() for p in net.parameters())
     print(total_params)
-    net = nn.DataParallel(net)
+    # net = nn.DataParallel(net)
 
     inp = torch.rand(3, f * t, dembed).to(device)
     out = net(inp)
