@@ -13,7 +13,17 @@ By prompting the model with an action and previous frames, the model will genera
 
 At current stage, the architecture of the model will refer to *[GAIA-1](https://arxiv.org/abs/2309.17080)*, a generative world model for autonomous driving. 
 
-At the same time, *[Ginie](https://arxiv.org/abs/2402.15391)* also demonstrated a good performance that I expected, so I'm considering to combine both model together and do experiment on it. 
+At the same time, *[Genie](https://arxiv.org/abs/2402.15391)* also demonstrated a good performance that I expected, so I'm considering to combine both models together and do experiment on it. 
+
+
+## Installation
+
+Simply, run: 
+```
+pip install -r requirements.txt
+```
+In addition, the environment is built with Python 3.9 and CUDA 11.8
+
 
 ## Citations
 
