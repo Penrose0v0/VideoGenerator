@@ -138,7 +138,7 @@ class Decoder(nn.Module):
 """Transformer"""
 class Transformer(nn.Module): 
     def __init__(self, vocab_size, embed_dim, num_frames, num_tokens, num_layers=6, 
-                 d_k=64, d_v=64, d_ff=2048, num_heads=8): 
+                 d_k=512, d_v=512, d_ff=2048, num_heads=8): 
         super().__init__()
         self.decoder = Decoder(num_layers, embed_dim, num_frames, num_tokens, d_k, d_v, d_ff, num_heads)
         self.projection = nn.Linear(embed_dim, vocab_size, bias=False)
@@ -239,20 +239,20 @@ class World_Model(nn.Module):
 
 if __name__ == "__main__": 
     dembed = 2048
-    f = 12  # num of frame
+    f = 7  # num of frame
     t = 580  # tokens per frame  32 * 18 + action tokens 4
     device = 'cpu'
-    # device = torch.device(
-    #     "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     # net = MultiHeadAttention(4096, 16, 16, 64)
     net = Transformer(vocab_size=4096, embed_dim=dembed, num_layers=6, num_frames=f, num_tokens=t, 
-                  d_k=64, d_v=64, d_ff=2048, num_heads=8).to(device)
+                  d_k=2048, d_v=2048, d_ff=2048, num_heads=8).to(device)
     total_params = sum(p.numel() for p in net.parameters())
     print(total_params)
     # net = nn.DataParallel(net)
 
-    inp = torch.rand(3, f * t, dembed).to(device)
+    inp = torch.rand(1, f * t, dembed).to(device)
     out = net(inp)
     print(out.shape)
     print(len(out[0, 0, :]), sum(out[0, 0, :]))

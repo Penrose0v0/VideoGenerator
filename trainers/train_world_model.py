@@ -29,6 +29,9 @@ class WM_Trainer:
         self.it_model_path = args.it_model_path
         self.wm_model_path = args.wm_model_path
 
+        self.vocab_size = args.vocab_size
+        self.embed_dim = args.embed_dim
+
         # Set device
         self.device = torch.device(
             "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -150,7 +153,8 @@ class WM_Trainer:
         
     def create_neural_network(self): 
         print(fmt.format("Create neural network"))
-        model = World_Model(vocab_size=4096, embed_dim=2048, num_frames=7, num_image_tokens=576, num_action_tokens=1).to(self.device)
+        model = World_Model(vocab_size=self.vocab_size, embed_dim=self.embed_dim, 
+                            num_frames=7, num_image_tokens=576, num_action_tokens=1).to(self.device)
 
         # Load pretrained model or create a new model
         if self.wm_model_path != '':

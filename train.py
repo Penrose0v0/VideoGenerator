@@ -11,8 +11,11 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--learning-rate', type=float, default=1e-4)
 
+    parser.add_argument('--vocab-size', type=float, default=4096)
+    parser.add_argument('--embed-dim', type=float, default=2048)
+
     parser.add_argument('--model-path', type=str, default='')
-    parser.add_argument('--wm-model-path', type=str, default='')
+    parser.add_argument('--wm-model-path', type=str, default='./weights/world_model/current.pth')
     parser.add_argument('--it-model-path', type=str, default='./weights/image_tokenizer/0608.pth')
     parser.add_argument('--dataset-path', type=str, default='/root/share/minecraft')
     parser.add_argument('--save-path', type=str, default='./weights/world_model')

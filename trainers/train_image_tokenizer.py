@@ -28,6 +28,9 @@ class IT_Trainer:
         self.model_path = args.model_path
         self.save_path = args.save_path
 
+        self.vocab_size = args.vocab_size
+        self.embed_dim = args.embed_dim
+
         # Set device
         self.device = torch.device(
             "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -125,7 +128,7 @@ class IT_Trainer:
             loss.backward()
             self.optim_G.step()
 
-            # Sum loss
+            # Calculate entire loss
             running_loss += loss.item()
             total_loss += loss.item()
             if batch_idx % count == count - 1:
@@ -164,7 +167,7 @@ class IT_Trainer:
         
     def create_neural_network(self): 
         print(fmt.format("Create neural network"))
-        model = Image_Tokenizer(vocab_size=2048, embed_dim=1024).to(self.device)
+        model = Image_Tokenizer(vocab_size=self.vocab_size, embed_dim=self.embed_dim).to(self.device)
         discriminator = Discriminator(patch=False).to(self.device)
 
         # Load pretrained model or create a new model
