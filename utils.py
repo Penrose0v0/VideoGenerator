@@ -72,3 +72,15 @@ def unnormalize_image(image):
     mean = [0.40789655, 0.44719303, 0.47026116]
     std = [0.2886383, 0.27408165, 0.27809834]
     return (image * std + mean) * 255.
+
+# File and folder
+def create_numbered_folder(root_dir, base_name='sample'):
+    i = 1
+    while True:
+        folder_name = f"{base_name}_{i}"
+        full_path = os.path.join(root_dir, folder_name)
+        if not os.path.exists(full_path):
+            os.makedirs(full_path)
+            break
+        i += 1
+    return full_path
