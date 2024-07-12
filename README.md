@@ -13,16 +13,51 @@ By prompting the model with an action and previous frames, the model will genera
 
 At current stage, the architecture of the model will refer to *[GAIA-1](https://arxiv.org/abs/2309.17080)*, a generative world model for autonomous driving. 
 
-At the same time, *[Genie](https://arxiv.org/abs/2402.15391)* also demonstrated a good performance that I expected, so I'm considering to combine both models together and do experiment on it. 
+By the way, *[Genie](https://arxiv.org/abs/2402.15391)* also demonstrated a good performance that I expected, so I'm considering to combine both models together and do experiment on it. 
 
 
 ## Installation
-
+### Basic
 Simply, run: 
 ```
 pip install -r requirements.txt
 ```
 In addition, the environment is built with Python 3.9 and CUDA 11.8
+
+If you failed to install dependencies in this way, please run the following command: 
+```
+pip install matplotlib
+pip install opencv-python opencv-contrib-python
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+### MineRL
+If you need to generate the Minecraft random video data, you have to install MineRL. 
+
+First of all, install jdk8: 
+```
+add-apt-repository ppa:openjdk-r/ppa
+apt-get update
+apt-get install openjdk-8-jdk
+
+# Verify installation
+java -version # this should output "1.8.X_XXX"
+# If you are still seeing a wrong Java version, you may use the following line to update it
+# sudo update-alternatives --config java
+```
+
+Then, install MineRL: 
+```
+pip install git+https://github.com/minerllabs/minerl
+```
+
+
+## Train
+Basically, run: 
+```
+python train.py
+```
+Please read the code of ```train.py``` for more details.
 
 
 ## Citations
