@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from image_tokenizer import Image_Tokenizer
+from networks.image_tokenizer import Image_Tokenizer
 
 class Decoder(nn.Module): 
     def __init__(self, vocab_size, embed_dim):
@@ -53,7 +53,8 @@ class Decoder(nn.Module):
     def forward(self, x): 
         cur, _ = self.image_tokenizer.encode(x)
         cur, _ = self.image_tokenizer.quantize(cur)
-        return self.decoder(cur)
+        y = self.decoder(cur)
+        return F.mse_loss(y, x)
     
     def decode_tokens(self, tokens): 
         z = self.dtoken(tokens)

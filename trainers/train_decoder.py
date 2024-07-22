@@ -54,7 +54,7 @@ class VD_Trainer:
         epoch_list, loss_list = [], []
         very_start = time.time()
         formatted_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(very_start))
-        self.log = Logger(f"logs/{formatted_time}.txt")
+        self.log = Logger(f"logs/VD-{formatted_time}.txt")
 
         try:
             for epoch in range(self.epochs):
@@ -62,7 +62,8 @@ class VD_Trainer:
 
                 # Train one epoch
                 current_loss = self.train(epoch)
-                self.val(epoch)
+                if epoch % 5 == 0:
+                    self.val(epoch)
 
                 # Save model
                 torch.save(self.model.state_dict(), os.path.join(self.save_path, "current.pth"))
@@ -75,7 +76,7 @@ class VD_Trainer:
                 # Draw figure
                 epoch_list.append(epoch + 1)
                 loss_list.append(current_loss)
-                draw_figure(epoch_list, loss_list, "Loss", f"./logs/{formatted_time}.png")
+                draw_figure(epoch_list, loss_list, "Loss", f"./logs/VD-{formatted_time}.png")
 
                 # Elapsed time
                 end = time.time()
@@ -95,7 +96,7 @@ class VD_Trainer:
             f"Best Epoch: {best_epoch}, Min Loss: {min_loss:.4f}")
         
         
-    def train(self, epoch_num, count=1000):
+    def train(self, epoch_num, count=100):
         self.model.train()
         running_loss, total_loss, total = 0.0, 0.0, 1
         self.log(f"< Epoch {epoch_num + 1} >")
@@ -130,13 +131,13 @@ class VD_Trainer:
         # Generate action (only 'forward')
         action = [0 for _ in range(25)]
         action[6] = 1
-        action = torch.from_numpy(np.array(action)).unsqueeze(0).repeat(5, 1).unsqueeze(0).to(self.device)
+        action = torch.from_numpy(np.array(action).astype(np.float32)).unsqueeze(0).repeat(2, 1).unsqueeze(0).to(self.device)
 
         # Load image
         image_path = "/root/share/minecraft/val/sample_10/0.png"
         image = cv2.imread(image_path)
 
-        image = cv2.resize(image, (512, 512))
+        image = cv2.resize(image, (512, 288))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = normalize_image(image)
         image = np.transpose(image, (2, 0, 1))
@@ -149,7 +150,7 @@ class VD_Trainer:
         with torch.no_grad():
             generated_tokens_list = self.wm.predict(frame_list=data, action_list=action)
             generated_tokens = torch.stack(generated_tokens_list).squeeze()
-            decoded = self.model.decode_tokens(generated_tokens)
+            decoded = self.model.module.decode_tokens(generated_tokens)
         for i in range(decoded.shape[0]): 
             image = decoded[i].permute(1, 2, 0).cpu().detach().numpy()
             image_save = unnormalize_image(image).astype('uint8')
@@ -161,7 +162,7 @@ class VD_Trainer:
         print(fmt.format("Create neural network"))
         model = Decoder(vocab_size=self.vocab_size, embed_dim=self.embed_dim).to(self.device)
         wm = World_Model(vocab_size=self.vocab_size, embed_dim=self.embed_dim, 
-                         num_frames=7, num_image_tokens=576, num_action_tokens=25).to(self.device)
+                         num_frames=7, num_image_tokens=576, num_action_tokens=1).to(self.device)
 
         # Load pretrained model or create a new model
         if self.vd_model_path != '':
@@ -174,17 +175,17 @@ class VD_Trainer:
         print(f"Loading pretrained model for world model: {self.wm_model_path}")
         wm.load_state_dict(torch.load(self.wm_model_path))
 
-        # device_count = torch.cuda.device_count()
-        # print(f"Using {device_count} GPUs")
+        device_count = torch.cuda.device_count()
+        print(f"Using {device_count} GPUs")
 
-        # model = nn.DataParallel(model, device_ids=[i for i in range(device_count)])
+        model = nn.DataParallel(model, device_ids=[i for i in range(device_count)])
         print()
 
         return model, wm
     
     def load_dataset(self): 
         print(fmt.format("Load dataset"))
-        train_set = ImageDataset(root_path=self.dataset_path)
+        train_set = ImageDataset(folder=self.dataset_path)
         train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True, drop_last=True)
         print()
         return train_loader

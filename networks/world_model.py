@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from image_tokenizer import Image_Tokenizer
+from networks.image_tokenizer import Image_Tokenizer
 
 """Action Encoder"""
 class Action_Encoder(nn.Module): 
@@ -202,9 +202,9 @@ class World_Model(nn.Module):
     
     def predict(self, frame_list, action_list): 
         """
-        frame_list: [1, len, c, h, w]
-        next_action: [1, len, action_size]  p.s. included the next action
-        This method only predict tokens for next one frame
+        frame_list: [1, len_f, c, h, w]
+        next_action: [1, len_a, action_size]
+        p.s. len_a >= len_f
         """ 
         max_len = self.num_frames * (self.num_image_tokens + self.num_action_tokens)
         pred_times = action_list.shape[1] - frame_list.shape[1] + 1
@@ -232,13 +232,13 @@ class World_Model(nn.Module):
         generated_tokens_list = []
         for i in range(pred_times): 
             if i != 0:
-                input_tokens = torch.cat((input_tokens, latter_actions[:, :, i-1]), dim=1) 
+                input_tokens = torch.cat((input_tokens, latter_actions[:, i-1]), dim=1) 
             for j in range(self.num_image_tokens): 
                 _, output = self.transformer(input_tokens).max(dim=-1, keepdim=False)
                 next_token_indice = output[:, -1]
                 next_token = self.image_tokenizer.vq._embedding.weight[next_token_indice].unsqueeze(1)
                 input_tokens = torch.cat((input_tokens, next_token), dim=1)
-                # print(f'\r{j}', end='')
+                print(f'\r{j}', end='')
             generated_tokens = input_tokens[:, -self.num_image_tokens:, :]
             generated_tokens = generated_tokens.reshape(batch_size, 18, 32, self.embed_dim).permute(0, 3, 1, 2).contiguous()
             # print(generated_tokens.shape)
@@ -254,8 +254,8 @@ if __name__ == "__main__":
     f = 7  # num of frame
     t = 576 + 25  # tokens per frame  32 * 18 + action tokens 4
     device = 'cpu'
-    # device = torch.device(
-    #     "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
     # net = MultiHeadAttention(4096, 16, 16, 64)
     # net = Transformer(vocab_size=4096, embed_dim=dembed, num_layers=6, num_frames=f, num_tokens=t, 
@@ -266,8 +266,8 @@ if __name__ == "__main__":
     # net = nn.DataParallel(net)
 
     # inp = torch.rand(1, f * t, dembed).to(device)
-    fl = torch.rand(1, 1, 3, 288, 512)
-    al = torch.rand(1, 5, 25)
+    fl = torch.rand(1, 1, 3, 288, 512).to(device)
+    al = torch.rand(1, 3, 25).to(device)
     out = net.predict(fl, al)
     for o in out: 
         print(o.shape)
