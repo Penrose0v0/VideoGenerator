@@ -154,7 +154,7 @@ class WM_Trainer:
     def create_neural_network(self): 
         print(fmt.format("Create neural network"))
         model = World_Model(vocab_size=self.vocab_size, embed_dim=self.embed_dim, 
-                            num_frames=7, num_image_tokens=576, num_action_tokens=1).to(self.device)
+                            num_frames=7, num_image_tokens=576, num_action_tokens=25).to(self.device)
 
         # Load pretrained model or create a new model
         if self.wm_model_path != '':

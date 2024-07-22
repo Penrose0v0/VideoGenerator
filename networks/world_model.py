@@ -7,12 +7,14 @@ from networks.image_tokenizer import Image_Tokenizer
 
 """Action Encoder"""
 class Action_Encoder(nn.Module): 
-    def __init__(self, action_space_dim=25, embed_dim=4096): 
+    def __init__(self, action_space_dim=25, embed_dim=4096, num_action_tokens=25): 
         super().__init__()
-        self.fc = nn.Linear(action_space_dim, embed_dim)
+        self.fc = nn.Linear(action_space_dim, embed_dim * num_action_tokens)
+        self.embed_dim = embed_dim
+        self.num_action_tokens = num_action_tokens
     
     def forward(self, x): 
-        return self.fc(x)
+        return self.fc(x).view(-1, self.num_action_tokens, self.embed_dim)
     
 
 def get_attn_pad_mask(seq_q, seq_k):  
@@ -163,7 +165,7 @@ class World_Model(nn.Module):
         self.image_tokenizer = Image_Tokenizer(vocab_size=vocab_size, embed_dim=embed_dim)
         self.image_encoder = self.image_tokenizer.tokenize
         self.action_encoder = Action_Encoder(embed_dim=embed_dim)
-        self.transformer = Transformer(vocab_size=vocab_size, embed_dim=embed_dim, num_frames=num_frames, num_tokens=num_image_tokens+1)
+        self.transformer = Transformer(vocab_size=vocab_size, embed_dim=embed_dim, num_frames=num_frames, num_tokens=num_image_tokens+num_action_tokens)
         
         for param in self.image_tokenizer.parameters(): 
             param.requires_grad = False
@@ -205,6 +207,8 @@ class World_Model(nn.Module):
         This method only predict tokens for next one frame
         """ 
         max_len = self.num_frames * (self.num_image_tokens + self.num_action_tokens)
+        pred_times = len(action_list) - len(frame_list) + 1
+        assert pred_times > 0
 
         # Encode frames and actions
         batch_size, cur_frame_num, c, h, w = frame_list.shape
@@ -240,7 +244,7 @@ class World_Model(nn.Module):
 if __name__ == "__main__": 
     dembed = 2048
     f = 7  # num of frame
-    t = 580  # tokens per frame  32 * 18 + action tokens 4
+    t = 576 + 25  # tokens per frame  32 * 18 + action tokens 4
     device = 'cpu'
     device = torch.device(
         "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
