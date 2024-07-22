@@ -15,8 +15,9 @@ if __name__ == "__main__":
     parser.add_argument('--embed-dim', type=float, default=2048)
 
     parser.add_argument('--model-path', type=str, default='')
-    parser.add_argument('--wm-model-path', type=str, default='./weights/world_model/current.pth')
+    parser.add_argument('--wm-model-path', type=str, default='')
     parser.add_argument('--it-model-path', type=str, default='./weights/image_tokenizer/0608.pth')
+    parser.add_argument('--vd-model-path', type=str, default='')
     parser.add_argument('--dataset-path', type=str, default='/root/share/minecraft')
     parser.add_argument('--save-path', type=str, default='./weights/world_model')
 
@@ -29,5 +30,8 @@ if __name__ == "__main__":
 
     if train_mode == "wm": 
         trainer = WM_Trainer(args=args)
+
+    if train_mode == "vd": 
+        trainer = VD_Trainer(args=args)
 
     trainer.run()

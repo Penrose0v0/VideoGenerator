@@ -1,2 +1,3 @@
 from trainers.train_image_tokenizer import IT_Trainer
 from trainers.train_world_model import WM_Trainer
+from trainers.train_decoder import VD_Trainer
