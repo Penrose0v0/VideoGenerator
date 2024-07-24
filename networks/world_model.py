@@ -248,6 +248,54 @@ class World_Model(nn.Module):
         # z = z.permute(0, 3, 1, 2).contiguous()
         return generated_tokens_list
 
+    def predict_from_one_frame(self, frame, action_list): 
+        """
+        frame: [batch_size, c, h, w]
+        action_list: [batch_size, len, action_size]
+        """
+        cur, prev_list = self.image_tokenizer.encode(frame)
+        z = self.image_tokenizer.etoken(cur)
+
+        # Convert z from BCHW -> BHWC and then flatten it
+        z = z.permute(0, 2, 3, 1).contiguous()
+        batch_size = z.shape[0]
+        z = z.view(-1, self.embed_dim)
+
+        # Tokenize the frame
+        _, tokens, _, indices = self.image_tokenizer.vq(z)
+        input_tokens = tokens.view(batch_size, -1, self.embed_dim)
+        print(tokens.shape)
+
+        # Tokenize actions
+        _, total_action_num, action_size = action_list.shape
+        actions = action_list.view(-1, action_size)
+        encoded_actions = self.action_encoder(actions).view(
+            batch_size, total_action_num, self.num_action_tokens, self.embed_dim)
+        print(encoded_actions.shape)
+
+        # Predicting
+        generated_tokens_list = []
+        for i in range(total_action_num): 
+            input_tokens = torch.cat((input_tokens, encoded_actions[:, i]), dim=1)
+            for j in range(self.num_image_tokens): 
+                _, output = self.transformer(input_tokens).max(dim=-1, keepdim=False)
+                next_token_indice = output[:, -1]
+                next_token = self.image_tokenizer.vq._embedding.weight[next_token_indice].unsqueeze(1)
+                input_tokens = torch.cat((input_tokens, next_token), dim=1)
+                print(f'\r{j}', end='')
+            generated_tokens = input_tokens[:, -self.num_image_tokens:, :]
+            generated_tokens = generated_tokens.reshape(batch_size, 18, 32, self.embed_dim).permute(0, 3, 1, 2).contiguous()
+            generated_tokens_list.append(generated_tokens)
+
+        decoded_list = []
+        for generated_tokens in generated_tokens_list: 
+            cur = self.image_tokenizer.dtoken(generated_tokens)
+            decoded = self.image_tokenizer.decode(cur, prev_list)
+            print(decoded.shape)
+            decoded_list.append(decoded)
+
+        return decoded_list
+
 
 if __name__ == "__main__": 
     dembed = 2048
@@ -266,10 +314,10 @@ if __name__ == "__main__":
     # net = nn.DataParallel(net)
 
     # inp = torch.rand(1, f * t, dembed).to(device)
-    fl = torch.rand(1, 1, 3, 288, 512).to(device)
+    fl = torch.rand(1, 3, 288, 512).to(device)
     al = torch.rand(1, 3, 25).to(device)
-    out = net.predict(fl, al)
-    for o in out: 
-        print(o.shape)
+    out = net.predict_from_one_frame(fl, al)
+    # for o in out: 
+    #     print(o.shape)
     # print(out.shape)
     # print(len(out[0, 0, :]), sum(out[0, 0, :]))

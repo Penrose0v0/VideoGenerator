@@ -54,11 +54,25 @@ class Decoder(nn.Module):
         cur, _ = self.image_tokenizer.encode(x)
         cur, _ = self.image_tokenizer.quantize(cur)
         y = self.decoder(cur)
-        return F.mse_loss(y, x)
+        return F.mse_loss(y, x) + 0.1 * F.l1_loss(y, x)
     
     def decode_tokens(self, tokens): 
         z = self.dtoken(tokens)
         return self.decoder(z)
+    
+    def reconstruct(self, x): 
+        cur, _ = self.image_tokenizer.encode(x)
+        cur, _ = self.image_tokenizer.quantize(cur)
+        return self.decoder(cur)
+    
+    def testing(self, x): 
+        cur, prev_list = self.image_tokenizer.encode(x)
+        new_list = []
+        for prev in prev_list: 
+            new = torch.zeros_like(prev)
+            new_list.append(new)
+        cur, _ = self.image_tokenizer.quantize(cur)
+        return self.image_tokenizer.decode(cur, new_list)
 
 if __name__ == "__main__": 
     net = Decoder(4096, 2048)

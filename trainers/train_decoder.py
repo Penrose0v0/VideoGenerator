@@ -12,7 +12,7 @@ import traceback
 
 from networks import Decoder, World_Model
 from dataset import ImageDataset
-from utils import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
+from utilities import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
 
 # 3407 is all you need
 setup_seed(3407)
@@ -131,7 +131,7 @@ class VD_Trainer:
         # Generate action (only 'forward')
         action = [0 for _ in range(25)]
         action[6] = 1
-        action = torch.from_numpy(np.array(action).astype(np.float32)).unsqueeze(0).repeat(2, 1).unsqueeze(0).to(self.device)
+        action = torch.from_numpy(np.array(action).astype(np.float32)).unsqueeze(0).repeat(3, 1).unsqueeze(0).to(self.device)
 
         # Load image
         image_path = "/root/share/minecraft/val/sample_10/0.png"
@@ -142,20 +142,37 @@ class VD_Trainer:
         image = normalize_image(image)
         image = np.transpose(image, (2, 0, 1))
 
-        data = np.array(image).astype(np.float32)
-        data = torch.from_numpy(data).unsqueeze(0).unsqueeze(0).to(self.device)
+        origin = np.array(image).astype(np.float32)
+        recon_target = torch.from_numpy(origin).unsqueeze(0).to(self.device)
+        data = torch.from_numpy(origin).unsqueeze(0).unsqueeze(0).to(self.device)
 
         # Generate and save
         self.model.eval()
         with torch.no_grad():
-            generated_tokens_list = self.wm.predict(frame_list=data, action_list=action)
-            generated_tokens = torch.stack(generated_tokens_list).squeeze()
-            decoded = self.model.module.decode_tokens(generated_tokens)
-        for i in range(decoded.shape[0]): 
-            image = decoded[i].permute(1, 2, 0).cpu().detach().numpy()
-            image_save = unnormalize_image(image).astype('uint8')
-            image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join("outputs", f"{epoch_num + 1}-{i + 1}.jpg"), image_save)
+            # # Reconstruct
+            # recon = self.model.module.reconstruct(recon_target)
+            # image = recon[0].permute(1, 2, 0).cpu().detach().numpy()
+            # image_save = unnormalize_image(image).astype('uint8')
+            # image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
+            # cv2.imwrite(os.path.join("outputs", f"{epoch_num + 1}-0.jpg"), image_save)
+
+            decoded = self.wm.predict_from_one_frame(recon_target, action)
+            for i in range(len(decoded)): 
+                image = decoded[i][0].permute(1, 2, 0).cpu().detach().numpy()
+                image_save = unnormalize_image(image).astype('uint8')
+                image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(os.path.join("outputs", f"{epoch_num + 1}-{i + 1}.jpg"), image_save)
+
+        #     # Generate next frames
+        #     generated_tokens_list = self.wm.predict(frame_list=data, action_list=action)
+        #     generated_tokens = torch.stack(generated_tokens_list).squeeze()
+        #     decoded = self.model.module.decode_tokens(generated_tokens)
+
+        # for i in range(decoded.shape[0]): 
+        #     image = decoded[i].permute(1, 2, 0).cpu().detach().numpy()
+        #     image_save = unnormalize_image(image).astype('uint8')
+        #     image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
+        #     cv2.imwrite(os.path.join("outputs", f"{epoch_num + 1}-{i + 1}.jpg"), image_save)
 
         
     def create_neural_network(self): 
@@ -167,7 +184,7 @@ class VD_Trainer:
         # Load pretrained model or create a new model
         if self.vd_model_path != '':
             print(f"Loading pretrained model: {self.vd_model_path}")
-            model.load_state_dict(torch.load(self.vd_model_path))
+            model.load_state_dict({k.replace('module.', ''): v for k, v in torch.load(self.vd_model_path).items()})
         else:
             print("Creating new video decoder")
             print(f"Loading pretrained model for image_tokenizer: {self.it_model_path}")

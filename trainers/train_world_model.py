@@ -12,7 +12,7 @@ import traceback
 
 from networks import World_Model
 from dataset import VideoDataset
-from utils import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
+from utilities import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
 
 # 3407 is all you need
 setup_seed(3407)
