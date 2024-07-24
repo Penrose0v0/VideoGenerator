@@ -4,7 +4,7 @@ import os
 import cv2
 import numpy as np
 
-from utils import normalize_image
+from utilities import normalize_image
 
 class ImageDataset(Dataset):
     def __init__(self, folder):
@@ -37,6 +37,8 @@ class ImageDataset(Dataset):
             data.append(image)
             total += 1
             print(f"\rReading data... [{total} / {len(files)}] ", end='')
+            # if total >= 10: 
+            #     break
 
         print("Completed! ")
         return data

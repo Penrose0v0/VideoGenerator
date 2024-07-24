@@ -1,6 +1,10 @@
 import argparse
 
 from trainers import *
+from utilities import setup_seed
+
+# 3407 is all you need
+setup_seed(3407)
 
 if __name__ == "__main__":
     fmt = "----- {:^25} -----"
@@ -16,7 +20,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--model-path', type=str, default='')
     parser.add_argument('--wm-model-path', type=str, default='')
-    parser.add_argument('--it-model-path', type=str, default='./weights/image_tokenizer/0608.pth')
+    parser.add_argument('--it-model-path', type=str, default='./weights/image_tokenizer/0724.pth')
     parser.add_argument('--vd-model-path', type=str, default='')
     parser.add_argument('--dataset-path', type=str, default='/root/share/minecraft')
     parser.add_argument('--save-path', type=str, default='./weights/world_model')
