@@ -12,7 +12,7 @@ import traceback
 
 from networks import Image_Tokenizer, Discriminator
 from dataset import ImageDataset
-from utils import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
+from utilities import Logger, setup_seed, draw_figure, convert_seconds, normalize_image, unnormalize_image
 
 # 3407 is all you need
 setup_seed(3407)
@@ -120,10 +120,10 @@ class IT_Trainer:
             self.optim_D.step()
 
             # Calculate tokenizer loss
-            perceptual_loss, vq_loss, l1_loss, l2_loss, outputs = self.model(inputs)
+            perceptual_loss, vq_loss, l1_loss, l2_loss, dino_loss, outputs = self.model(inputs)
             dis_gen = self.discriminator(outputs)
             gan_loss = F.binary_cross_entropy(dis_gen, torch.ones_like(dis_gen))
-            loss = 0.2 * l1_loss + 2.0 * l2_loss + 0.1 * perceptual_loss + 1.0 * gan_loss + 1.0 * vq_loss
+            loss = 0.2 * l1_loss + 2.0 * l2_loss + 0.1 * perceptual_loss + 1.0 * gan_loss + 1.0 * vq_loss + 0.1 * dino_loss
             loss = loss.sum()
             loss.backward()
             self.optim_G.step()

@@ -192,6 +192,9 @@ class Image_Tokenizer(UNet):
         self.percept = torch.nn.Sequential(*percept.children())[:-2]
         for param in self.percept.parameters(): 
             param.requires_grad = False
+
+        self.dino = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+        self.dim_align = nn.Conv2d(512, 384, kernel_size=1, bias=False)
     
     def tokenize(self, x): 
         cur, _ = super().encode(x)
@@ -245,22 +248,140 @@ class Image_Tokenizer(UNet):
         l2_loss = F.mse_loss(y, x)
         l1_loss = F.l1_loss(y, x)
 
+        # Inductive bias loss
+        dino = self.dino.get_intermediate_layers(x, n=1)[0][:, 1:, :]
+        base = self.dim_align(cur).view(cur.shape[0], 384, -1).permute(0, 2, 1)
+        inductive_bias_loss = F.cosine_similarity(base, dino, dim=-1).mean()
+
         # Generate output
         output = self.decode(cur, prev_list)
 
-        return perceptual_loss, vq_loss, l1_loss, l2_loss, output
+        return perceptual_loss, vq_loss, l1_loss, l2_loss, inductive_bias_loss, output
     
     def forward(self, x): 
         return self.calculate_loss(x)
 
+
+"""New Image Tokenizer"""
+class new_Image_Tokenizer(nn.Module): 
+    def __init__(self, vocab_size, embed_dim, 
+                 commitment_cost=0.25, decay=0.99, epsilon=1e-5): 
+        super().__init__()
+        self.hidden = 1024
+        self.embed_dim = embed_dim
+
+        self.encoder = torch.nn.Sequential(*models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2).children())[:-3]  # [batch_size, 1024, 18, 32]
+        self.etoken = nn.Conv2d(self.hidden, embed_dim, kernel_size=1, bias=False)
+
+        self.vq = VectorQuantizerEMA(vocab_size, embed_dim, commitment_cost, decay, epsilon)
+
+        self.dtoken = nn.Conv2d(embed_dim, self.hidden, kernel_size=1, bias=False)
+        decoder_channels = [512, 256, 128, 64]
+        decoder_kernel = [4, 4, 4, 4]
+        self.decoder = self.make_decoder_layer(decoder_channels, decoder_kernel)
+
+    def make_decoder_layer(self, num_channels, num_kernel):
+        layers = []
+        prev_channels = self.hidden
+        for channels, kernel in zip(num_channels, num_kernel):
+            up = nn.ConvTranspose2d(
+                in_channels=prev_channels,
+                out_channels=channels,
+                kernel_size=kernel,
+                stride=2,
+                padding=1,
+                output_padding=0,
+                bias=False)
+
+            layers.append(up)
+            layers.append(nn.BatchNorm2d(channels))
+            layers.append(nn.ReLU(inplace=True))
+            prev_channels = channels
+
+        layers.append(
+            nn.Sequential(
+                nn.Conv2d(prev_channels, prev_channels, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(prev_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(prev_channels, 3, kernel_size=1, stride=1, padding=0, bias=True),
+            )
+        )
+
+        return nn.Sequential(*layers)
+    
+    def tokenize(self, x): 
+        cur = self.encoder(x)
+        z = self.etoken(cur)
+
+        # Convert z from BCHW -> BHWC and then flatten it
+        z = z.permute(0, 2, 3, 1).contiguous()
+        batch_size = z.shape[0]
+        z = z.view(-1, self.embed_dim)
+
+        # Tokenize
+        _, tokens, _, indices = self.vq(z)
+        tokens = tokens.view(batch_size, -1, self.embed_dim)
+
+        return tokens, indices
+    
+    def generate(self, x):
+        cur = self.encoder(x)
+        z = self.etoken(cur)
+
+        # Convert z from BCHW -> BHWC and then flatten it
+        z = z.permute(0, 2, 3, 1).contiguous()
+        z_shape = z.shape
+        z = z.view(-1, self.embed_dim)
+
+        # Discretize z
+        vq_loss, tokens, _, _ = self.vq(z)
+
+        # Unflatten z and convert it from BHWC -> BCHW
+        z = tokens.view(z_shape)
+        z = z.permute(0, 3, 1, 2).contiguous()
+
+        cur = self.dtoken(z)
+        y = self.decoder(cur)
+        
+        return y
+    
+    def forward(self, x): 
+        cur = self.encoder(x)
+        z = self.etoken(cur)
+
+        # Convert z from BCHW -> BHWC and then flatten it
+        z = z.permute(0, 2, 3, 1).contiguous()
+        z_shape = z.shape
+        z = z.view(-1, self.embed_dim)
+
+        # Discretize z
+        vq_loss, tokens, _, _ = self.vq(z)
+
+        # Unflatten z and convert it from BHWC -> BCHW
+        z = tokens.view(z_shape)
+        z = z.permute(0, 3, 1, 2).contiguous()
+
+        cur = self.dtoken(z)
+        y = self.decoder(cur)
+
+        # Loss
+        perceptual_loss = torch.zeros_like(vq_loss)
+        l2_loss = F.mse_loss(y, x)
+        l1_loss = F.l1_loss(y, x)
+
+        return perceptual_loss, vq_loss, l1_loss, l2_loss, y
 
 if __name__ == "__main__": 
     # net = UNet(in_c=3, out_c=3, num=4)
     # net = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_FEATURES)
     # net = torch.nn.Sequential(*net.children())[:-2]
     # net = Discriminator(patch=False)
-    net = Image_Tokenizer(embed_dim=4096)
+    # net = Image_Tokenizer(embed_dim=4096)
+    # net = torch.nn.Sequential(*models.vgg16().children())[:-2]
+    # net = Image_Tokenizer(vocab_size=4096, embed_dim=2048)
+    # net = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+    net = new_Image_Tokenizer(vocab_size=4096, embed_dim=2048)
 
-    inp = torch.rand(1, 3, 360, 640)
-    out = net.generate(inp)
-    print(out.shape)
+    inp = torch.rand(1, 3, 288, 512)
+    out = net(inp)
+    # print(out.shape)
